@@ -6,10 +6,9 @@ import archiver from 'archiver';
 import { GoogleGenAI } from '@google/genai';
 import puppeteerLib from 'puppeteer-core';
 import chromiumLib from '@sparticuz/chromium';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+import Frustum from './public/frustum.js';
 
 const app  = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -18,9 +17,6 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// ─── Frustum math (server-side copy) ────────────────────────────────────────
-const Frustum = require('./public/frustum.js');
 
 // ─── Gemini analysis ─────────────────────────────────────────────────────────
 app.post('/api/analyze', upload.single('image'), async (req, res) => {
