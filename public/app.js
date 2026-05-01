@@ -1,4 +1,5 @@
 // app.js — Tumblerify frontend
+import Frustum from './frustum.js';
 
 // ── State ───────────────────────────────────────────────────────────────────
 let state = {
