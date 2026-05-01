@@ -169,9 +169,9 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     p2.drawLine({ start:{x:ix+fw-overlapPt, y:iy}, end:{x:ix+fw-overlapPt, y:iy+fh}, thickness:1, color:purple, dashArray:[4,3] });
 
     // Dimension annotations
-    p2.drawText(`← ${Math.round(params.outerArc)} mm →`, { x:ix + fw/2 - 18, y:iy + fh + 8, size:7, font, color:blackC });
-    p2.drawText(`↕ ${Math.round(params.slant)} mm`, { x:ix + fw + 5, y:iy + fh/2, size:7, font, color:blackC });
-    p2.drawText(`overlap tab: ${overlapMm}mm →`, { x:ix + fw - overlapPt - 58, y:iy - 12, size:7, font, color:purple });
+    p2.drawText(`|-- ${Math.round(params.outerArc)} mm --|`, { x:ix + fw/2 - 18, y:iy + fh + 8, size:7, font, color:blackC });
+    p2.drawText(`H: ${Math.round(params.slant)} mm`, { x:ix + fw + 5, y:iy + fh/2, size:7, font, color:blackC });
+    p2.drawText(`overlap tab: ${overlapMm}mm`, { x:ix + fw - overlapPt - 58, y:iy - 12, size:7, font, color:purple });
 
     if (fitSc < 0.99) {
       p2.drawText(`Note: scaled to ${(fitSc*100).toFixed(0)}% to fit A4. For true 1:1, print on larger paper or use a print shop.`, { x:MAR, y:iy-22, size:7, font, color:grayC });
