@@ -298,16 +298,20 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
         margin: { top: 0, right: 0, bottom: 0, left: 0 }
       });
 
-    // ── ZIP both files ────────────────────────────────────────────────────────
-    const sizeName = sizeKey.replace('/','');
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="tumblerify-${sizeName}.zip"`);
+      // ── ZIP both files ────────────────────────────────────────────────────
+      const sizeName = sizeKey.replace('/','');
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="tumblerify-${sizeName}.zip"`);
 
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.pipe(res);
-    archive.append(pdfBuffer, { name: `tumbler-wrap-${sizeName}.pdf` });
-    archive.append(Buffer.from(svgCutfile), { name: `tumbler-cutfile-${sizeName}.svg` });
-    await archive.finalize();
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      archive.pipe(res);
+      archive.append(pdfBuffer, { name: `tumbler-wrap-${sizeName}.pdf` });
+      archive.append(Buffer.from(svgCutfile), { name: `tumbler-cutfile-${sizeName}.svg` });
+      await archive.finalize();
+
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
 
   } catch (err) {
     console.error('Generate error:', err);
