@@ -1,13 +1,7 @@
 // frustum.js — Tumbler wrap arc geometry
-// Works in both Node (module.exports) and browser (window.Frustum)
+// ES module (Node + browser via <script type="module"> or globalThis fallback)
 
-;(function(root, factory) {
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = factory();
-  } else {
-    root.Frustum = factory();
-  }
-}(typeof window !== 'undefined' ? window : this, function() {
+function _frustumFactory() {
 
   // Standard tumbler sizes (all measurements in mm)
   const SIZES = {
@@ -146,4 +140,12 @@
   }
 
   return { SIZES, compute, arcPath, boundingBox };
-}));
+}
+
+const Frustum = _frustumFactory();
+
+// Browser global (for non-module <script> tags)
+if (typeof window !== 'undefined') window.Frustum = Frustum;
+
+export default Frustum;
+export const { SIZES, compute, arcPath, boundingBox } = Frustum;
