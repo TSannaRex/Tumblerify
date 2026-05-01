@@ -1,9 +1,15 @@
-const express = require('express');
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
-const archiver = require('archiver');
-const { GoogleGenAI } = require('@google/genai');
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import archiver from 'archiver';
+import { GoogleGenAI } from '@google/genai';
+import puppeteerLib from 'puppeteer-core';
+import chromiumLib from '@sparticuz/chromium';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app  = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -120,13 +126,8 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 </svg>`;
 
     // ── Generate PDF via Puppeteer ────────────────────────────────────────────
-    let chromium, puppeteer;
-    try {
-      chromium  = require('@sparticuz/chromium');
-      puppeteer = require('puppeteer-core');
-    } catch {
-      return res.status(500).json({ error: 'PDF generation unavailable in this environment.' });
-    }
+    const chromium = chromiumLib;
+    const puppeteer = puppeteerLib;
 
     const styleBlock = analysisJson ? analysisJson.colors.slice(0,5).map((c,i) =>
       `.swatch-${i} { background: ${c}; }`
@@ -270,25 +271,32 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 </body>
 </html>`;
 
-    const execPath = await chromium.executablePath();
-    console.log('Chromium path:', execPath);
-
-    const browser = await puppeteer.launch({
-      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      defaultViewport: { width: 1200, height: 900 },
-      executablePath: execPath,
-      headless: true
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await new Promise(r => setTimeout(r, 1500));
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: 0, bottom: 0, left: 0, right: 0 }
-    });
-    await browser.close();
+    let browser = null;
+    try {
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+      const page = await browser.newPage();
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        if (['image', 'stylesheet', 'font'].includes(req.resourceType()) &&
+            !req.url().includes('fonts.googleapis') &&
+            !req.url().includes('fonts.gstatic')) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+      await page.setContent(htmlContent, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await new Promise(r => setTimeout(r, 2000));
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: 0, right: 0, bottom: 0, left: 0 }
+      });
 
     // ── ZIP both files ────────────────────────────────────────────────────────
     const sizeName = sizeKey.replace('/','');
