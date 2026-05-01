@@ -131,7 +131,7 @@ function renderFlatWrap() {
   const { arcPath, boundingBox } = Frustum;
 
   // Scale to fill preview panel width nicely
-  const maxW = Math.min(flatWrap.clientWidth - 20 || 700, 800);
+  const maxW = Math.min((flatWrap.clientWidth > 100 ? flatWrap.clientWidth - 20 : 700), 800);
   const bbox  = boundingBox(params);
   const scale = Math.min(maxW / bbox.width, 500 / bbox.height);
 
@@ -220,7 +220,7 @@ function renderFlatWrap() {
 // The design image is treated as the flat wrap — stretched to cover 360°
 // of the cup surface (with the overlap tab covering the seam).
 function render3DCup() {
-  const W = Math.min(flatWrap.clientWidth - 20 || 500, 600);
+  const W = Math.min((flatWrap.clientWidth > 100 ? flatWrap.clientWidth - 20 : 500), 600);
   const H = Math.round(W * 1.2);
   cup3dCanvas.width  = W;
   cup3dCanvas.height = H;
@@ -480,4 +480,5 @@ function toast(msg) {
 initSizeGrid();
 state.params = Frustum.compute(state.sizeKey, state.overlapMm);
 updatePreviewLabel();
-renderPreview();
+// Wait for layout so clientWidth is available
+requestAnimationFrame(() => renderPreview());
