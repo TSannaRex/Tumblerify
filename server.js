@@ -40,7 +40,7 @@ Respond ONLY with valid JSON, no markdown, no backticks:
 }`;
 
     const result = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: [{
         role: 'user',
         parts: [
@@ -270,15 +270,19 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 </body>
 </html>`;
 
+    const execPath = await chromium.executablePath();
+    console.log('Chromium path:', execPath);
+
     const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      defaultViewport: { width: 1200, height: 900 },
+      executablePath: execPath,
+      headless: true
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await new Promise(r => setTimeout(r, 1500));
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
