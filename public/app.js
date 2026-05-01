@@ -130,206 +130,222 @@ function renderFlatWrap() {
   const params = state.params;
   const { arcPath, boundingBox } = Frustum;
 
-  const maxW  = 640;
+  // Scale to fill preview panel width nicely
+  const maxW = Math.min(flatWrap.clientWidth - 20 || 700, 800);
   const bbox  = boundingBox(params);
-  const scale = Math.min(maxW / bbox.width, 480 / bbox.height);
+  const scale = Math.min(maxW / bbox.width, 500 / bbox.height);
 
   const cw = Math.ceil(bbox.width  * scale);
   const ch = Math.ceil(bbox.height * scale);
-  const cx = bbox.cx * scale;
-  const cy = bbox.cy * scale;
+  const cx = bbox.cx * scale;   // x offset to arc centre within canvas
+  const cy = bbox.cy * scale;   // y offset (top margin)
 
   flatCanvas.width  = cw;
   flatCanvas.height = ch;
+  flatCanvas.style.width  = cw + 'px';
+  flatCanvas.style.height = ch + 'px';
 
   const ctx = flatCanvas.getContext('2d');
   ctx.clearRect(0, 0, cw, ch);
 
   const pathData = arcPath(params, scale);
 
-  // Translate origin to arc centre
+  // All drawing is offset by (cx, cy) — the arc is centred at that origin
   ctx.save();
   ctx.translate(cx, cy);
 
-  const mainPath   = new Path2D(pathData.d);
-  const olPath     = new Path2D(pathData.overlapLine);
+  const mainPath = new Path2D(pathData.d);
+  const olPath   = new Path2D(pathData.overlapLine);
 
   if (state.imageEl) {
+    // Clip to arc shape, then draw image STRETCHED to fill the arc bounding box.
+    // This is correct — the printed wrap is exactly this rectangle mapped to the arc.
     ctx.save();
     ctx.clip(mainPath);
-    // Draw image filling the bounding rect
-    ctx.drawImage(state.imageEl, -cx, 0, cw, ch);
+    // The arc bounding box in translated coords:
+    // left edge is at -cx, right edge is at (cw - cx), top is 0, bottom is (ch - cy)
+    ctx.drawImage(state.imageEl, -cx, 0, cw, ch - cy);
     ctx.restore();
     canvasEmpty.style.display = 'none';
   } else {
-    ctx.fillStyle = '#c8c5f0';
+    // No image — show template shape with subtle fill + grid hint
+    ctx.fillStyle = '#dddaf8';
     ctx.fill(mainPath);
+    // Draw a light grid inside to hint at "design goes here"
+    ctx.save();
+    ctx.clip(mainPath);
+    ctx.strokeStyle = 'rgba(92,91,212,0.15)';
+    ctx.lineWidth = 1;
+    const gridStep = 30;
+    for (let x = -cx; x < cw; x += gridStep) {
+      ctx.beginPath(); ctx.moveTo(x, -cy); ctx.lineTo(x, ch); ctx.stroke();
+    }
+    for (let y = 0; y < ch; y += gridStep) {
+      ctx.beginPath(); ctx.moveTo(-cx, y); ctx.lineTo(cw, y); ctx.stroke();
+    }
+    ctx.restore();
   }
 
-  // Outline
+  // Arc outline (cut line)
   ctx.strokeStyle = '#5C5BD4';
   ctx.lineWidth   = 2;
   ctx.stroke(mainPath);
 
-  // Overlap line (dashed)
+  // Overlap dashed line (fold/score line)
   ctx.save();
-  ctx.setLineDash([6, 4]);
+  ctx.setLineDash([7, 5]);
   ctx.strokeStyle = '#9999e0';
   ctx.lineWidth   = 1.5;
   ctx.stroke(olPath);
   ctx.restore();
 
-  ctx.restore();
+  ctx.restore(); // undo translate
 
-  // Dimension label
-  if (state.imageEl) {
-    ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.fillRect(8, ch - 30, 330, 22);
-    ctx.fillStyle = '#534AB7';
-    ctx.font = '500 10.5px Poppins, sans-serif';
-    ctx.fillText(
-      `${params.label}  ·  top arc ${Math.round(params.outerArc)}mm  ·  bottom arc ${Math.round(params.innerArc)}mm  ·  height ${Math.round(params.slant)}mm`,
-      12, ch - 14
-    );
-  }
+  // Dimension label bar at bottom
+  ctx.fillStyle = state.imageEl ? 'rgba(255,255,255,0.9)' : 'rgba(237,237,254,0.95)';
+  ctx.fillRect(0, ch - 26, cw, 26);
+  ctx.fillStyle = '#534AB7';
+  ctx.font = '500 11px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(
+    `${params.label}  ·  top ${Math.round(params.outerArc)}mm  ·  bottom ${Math.round(params.innerArc)}mm  ·  height ${Math.round(params.slant)}mm  ·  overlap ${params.overlapMm}mm`,
+    10, ch - 13
+  );
 
-  // Show empty state overlay only when no image
-  canvasEmpty.style.display = state.imageEl ? 'none' : '';
+  canvasEmpty.style.display = 'none';
 }
 
 // ── 3D Cup renderer ──────────────────────────────────────────────────────────
+// Renders a realistic tapered cup with the design wrapped around it.
+// The design image is treated as the flat wrap — stretched to cover 360°
+// of the cup surface (with the overlap tab covering the seam).
 function render3DCup() {
-  if (!state.imageEl) {
-    cup3dCanvas.width  = 400;
-    cup3dCanvas.height = 500;
-    const ctx = cup3dCanvas.getContext('2d');
-    ctx.clearRect(0, 0, 400, 500);
-    ctx.fillStyle = '#f0f0f8';
-    ctx.fillRect(0, 0, 400, 500);
-    ctx.fillStyle = '#aaa';
-    ctx.font = '14px Poppins, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Upload a design to see 3D preview', 200, 250);
-    return;
-  }
-
-  const params = state.params;
-  const W = 400, H = 520;
+  const W = Math.min(flatWrap.clientWidth - 20 || 500, 600);
+  const H = Math.round(W * 1.2);
   cup3dCanvas.width  = W;
   cup3dCanvas.height = H;
+  cup3dCanvas.style.width  = W + 'px';
+  cup3dCanvas.style.height = H + 'px';
 
   const ctx = cup3dCanvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
 
-  // Cup geometry in pixels
-  const cupTopW   = params.topDia * 1.6;
-  const cupBotW   = params.botDia * 1.6;
-  const cupHeight = params.height * 1.6;
+  if (!state.imageEl) {
+    ctx.fillStyle = '#f4f4fb';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Upload a design to see 3D preview', W/2, H/2);
+    return;
+  }
 
-  const cx   = W / 2;
-  const topY = (H - cupHeight) / 2;
-  const botY = topY + cupHeight;
-
-  // Half-widths (for the ellipses)
-  const topRx = cupTopW / 2;
-  const botRx = cupBotW / 2;
-  const ry = 10; // ellipse y-radius (perspective)
-
-  // Draw the cup silhouette with the design texture
-  drawCupBody(ctx, cx, topY, botY, topRx, botRx, ry, W, H);
-  drawCupTop(ctx, cx, topY, topRx, ry);
-  drawCupBottom(ctx, cx, botY, botRx, ry);
-}
-
-function drawCupBody(ctx, cx, topY, botY, topRx, botRx, ry, W, H) {
   const params = state.params;
   const img    = state.imageEl;
 
-  // Number of vertical slices for the cylindrical warp
-  const slices = 80;
-  const sliceAngleDeg = params.sweepDeg / slices;
-  const startAngle    = -params.sweepDeg / 2;
+  // Scale cup to fit canvas with padding
+  const scale   = Math.min((W * 0.7) / params.topDia, (H * 0.78) / params.height);
+  const topRx   = (params.topDia / 2) * scale;
+  const botRx   = (params.botDia / 2) * scale;
+  const cupH    = params.height * scale;
+  const rimRy   = topRx * 0.13;  // ellipse depth for perspective
+  const botRy   = botRx * 0.10;
+
+  const cx    = W / 2;
+  const topY  = (H - cupH) / 2 - rimRy;
+  const botY  = topY + cupH;
+
+  // ── Draw cup body with image mapped onto cylinder ─────────────────────────
+  // We slice the cup into vertical strips. Each strip samples a horizontal
+  // slice of the design image proportional to its angular position.
+  // The design covers the full 360° (sweepDeg ≈ 360° for most tumblers).
+  const slices = 120;
+  // We show the front 180° of the cup (the visible face)
+  const visibleStart = -90; // degrees
+  const visibleEnd   =  90;
+  const totalSweep   = params.sweepDeg; // full wrap angle
 
   for (let i = 0; i < slices; i++) {
-    const angleDeg = startAngle + i * sliceAngleDeg;
-    const nextDeg  = angleDeg + sliceAngleDeg;
+    const t0 = i / slices;
+    const t1 = (i + 1) / slices;
+    const angleDeg0 = visibleStart + t0 * (visibleEnd - visibleStart);
+    const angleDeg1 = visibleStart + t1 * (visibleEnd - visibleStart);
+    const angleRad0 = angleDeg0 * Math.PI / 180;
+    const angleRad1 = angleDeg1 * Math.PI / 180;
 
-    // Convert angle to x position on ellipse (front = centre, sides = edges)
-    const x1_top = cx + topRx * Math.sin(angleDeg * Math.PI / 180);
-    const x2_top = cx + topRx * Math.sin(nextDeg  * Math.PI / 180);
-    const x1_bot = cx + botRx * Math.sin(angleDeg * Math.PI / 180);
-    const x2_bot = cx + botRx * Math.sin(nextDeg  * Math.PI / 180);
+    // X positions on the ellipse
+    const x0_top = cx + topRx * Math.sin(angleRad0);
+    const x1_top = cx + topRx * Math.sin(angleRad1);
+    const x0_bot = cx + botRx * Math.sin(angleRad0);
+    const x1_bot = cx + botRx * Math.sin(angleRad1);
 
-    const y1_top = topY;
-    const y2_top = topY;
-    const y1_bot = botY;
-    const y2_bot = botY;
+    // Map visible angle to image x — centre of cup = centre of image
+    // angular position within the full sweep (0 = left edge, 1 = right edge)
+    const imgT0 = (angleDeg0 + totalSweep / 2) / totalSweep;
+    const imgT1 = (angleDeg1 + totalSweep / 2) / totalSweep;
+    const srcX  = Math.max(0, imgT0 * img.naturalWidth);
+    const srcW  = Math.max(1, (imgT1 - imgT0) * img.naturalWidth);
 
-    // Source position in image (map angle fraction to image x)
-    const tNorm = (angleDeg - startAngle) / params.sweepDeg;
-    const srcX  = tNorm * img.naturalWidth;
-    const srcW  = (sliceAngleDeg / params.sweepDeg) * img.naturalWidth;
+    // Cosine lighting — front (angle=0) is brightest
+    const midRad = ((angleDeg0 + angleDeg1) / 2) * Math.PI / 180;
+    const light  = Math.max(0.25, Math.cos(midRad));
+    const shadow = (1 - light) * 0.55;
 
-    // Lighting: simple cosine shading from front
-    const midAngle = (angleDeg + sliceAngleDeg / 2) * Math.PI / 180;
-    const brightness = Math.max(0.35, Math.cos(midAngle));
-
-    // Draw trapezoid slice
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(x1_top, y1_top);
-    ctx.lineTo(x2_top, y2_top);
-    ctx.lineTo(x2_bot, y2_bot);
-    ctx.lineTo(x1_bot, y1_bot);
+    ctx.moveTo(x0_top, topY + rimRy);
+    ctx.lineTo(x1_top, topY + rimRy);
+    ctx.lineTo(x1_bot, botY);
+    ctx.lineTo(x0_bot, botY);
     ctx.closePath();
     ctx.clip();
 
-    // Draw the image strip stretched to this trapezoid
-    const dstX = Math.min(x1_top, x2_top, x1_bot, x2_bot) - 1;
-    const dstW = Math.abs(x2_top - x1_top) + 2;
-    ctx.drawImage(img, srcX, 0, Math.max(1, srcW), img.naturalHeight,
-                       dstX, topY, Math.max(1, dstW), botY - topY);
+    const dstX = Math.min(x0_top, x0_bot) - 1;
+    const dstW = Math.max(1, Math.abs(x1_top - x0_top) + 2);
+    ctx.drawImage(img, srcX, 0, srcW, img.naturalHeight,
+                       dstX, topY + rimRy, dstW, botY - topY - rimRy);
 
-    // Lighting overlay
-    ctx.fillStyle = brightness < 1
-      ? `rgba(0,0,0,${(1 - brightness) * 0.45})`
-      : 'transparent';
-    ctx.fillRect(dstX, topY, dstW + 2, botY - topY);
-
+    // Lighting shadow overlay
+    if (shadow > 0.02) {
+      ctx.fillStyle = `rgba(0,0,0,${shadow.toFixed(3)})`;
+      ctx.fillRect(dstX, topY + rimRy, dstW + 1, botY - topY - rimRy);
+    }
     ctx.restore();
   }
 
-  // Cup outline
+  // ── Cup outline ───────────────────────────────────────────────────────────
   ctx.beginPath();
-  ctx.moveTo(cx - topRx, topY);
+  ctx.moveTo(cx - topRx, topY + rimRy);
   ctx.lineTo(cx - botRx, botY);
-  ctx.moveTo(cx + topRx, topY);
+  ctx.moveTo(cx + topRx, topY + rimRy);
   ctx.lineTo(cx + botRx, botY);
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // ── Elliptical top rim ────────────────────────────────────────────────────
+  // Back half (behind)
+  ctx.beginPath();
+  ctx.ellipse(cx, topY + rimRy, topRx, rimRy, 0, 0, Math.PI);
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+  // Front half (rim face)
+  ctx.beginPath();
+  ctx.ellipse(cx, topY + rimRy, topRx, rimRy, 0, Math.PI, Math.PI * 2);
+  ctx.fillStyle = 'rgba(240,240,255,0.5)';
+  ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   ctx.lineWidth   = 1.5;
   ctx.stroke();
-}
 
-function drawCupTop(ctx, cx, topY, topRx, ry) {
-  // Elliptical rim
+  // ── Bottom ellipse ────────────────────────────────────────────────────────
   ctx.beginPath();
-  ctx.ellipse(cx, topY, topRx, ry, 0, 0, Math.PI * 2);
-  const grad = ctx.createRadialGradient(cx, topY, 0, cx, topY, topRx);
-  grad.addColorStop(0, 'rgba(255,255,255,0.6)');
-  grad.addColorStop(1, 'rgba(200,200,220,0.4)');
-  ctx.fillStyle   = grad;
+  ctx.ellipse(cx, botY, botRx, botRy, 0, 0, Math.PI * 2);
+  ctx.fillStyle   = 'rgba(0,0,0,0.18)';
   ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-  ctx.lineWidth   = 1.5;
-  ctx.stroke();
-}
-
-function drawCupBottom(ctx, cx, botY, botRx, ry) {
-  ctx.beginPath();
-  ctx.ellipse(cx, botY, botRx, ry * 0.6, 0, 0, Math.PI * 2);
-  ctx.fillStyle   = 'rgba(0,0,0,0.12)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
   ctx.lineWidth   = 1;
   ctx.stroke();
 }
