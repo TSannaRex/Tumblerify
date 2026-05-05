@@ -102,6 +102,10 @@
   .upload-sub { color: var(--muted); font-size: 13px; }
 
   .upload-preview { display: flex; gap: 16px; align-items: center; }
+  /* Defensive: HTML `hidden` attribute must beat the flex display rule above.
+     Without this, browsers respect [hidden] but linters warn — and a future
+     stylesheet edit could silently break the empty/filled toggle. */
+  [hidden] { display: none !important; }
   .upload-preview img {
     width: 88px; height: 88px; object-fit: cover;
     border-radius: var(--radius-sm); border: 1px solid var(--border);
@@ -313,6 +317,7 @@
 
     <!-- Upload pane -->
     <div id="uploadPane">
+      <!-- Empty state: the clickable label with file input -->
       <label class="upload-zone" id="uploadZone">
         <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" style="display:none" />
         <div id="uploadEmpty">
@@ -320,15 +325,18 @@
           <div class="upload-text">Click to upload or drag &amp; drop</div>
           <div class="upload-sub">PNG, JPG, or WebP — any size</div>
         </div>
-        <div id="uploadFilled" class="upload-preview" style="display:none">
-          <img id="thumbPreview" alt="" />
-          <div class="upload-info">
-            <div class="name" id="thumbName"></div>
-            <div class="meta" id="thumbMeta"></div>
-          </div>
-          <button class="upload-clear" id="clearBtn" type="button" title="Remove">✕</button>
-        </div>
       </label>
+      <!-- Filled state: separate sibling, hidden by default. Kept outside the <label>
+           because nesting interactive content inside a label causes browser-specific
+           rendering artifacts (phantom borders for src-less <img>, broken hit testing). -->
+      <div id="uploadFilled" class="upload-zone upload-preview" hidden>
+        <img id="thumbPreview" alt="" />
+        <div class="upload-info">
+          <div class="name" id="thumbName"></div>
+          <div class="meta" id="thumbMeta"></div>
+        </div>
+        <button class="upload-clear" id="clearBtn" type="button" title="Remove">✕</button>
+      </div>
     </div>
 
     <!-- AI pane -->
@@ -558,16 +566,15 @@ function loadImageFromDataUrl(dataUrl, filename = 'ai-generated.png', sizeBytes 
 }
 
 function showImagePreview() {
-  const empty  = document.getElementById('uploadEmpty');
-  const filled = document.getElementById('uploadFilled');
   const zone   = document.getElementById('uploadZone');
+  const filled = document.getElementById('uploadFilled');
   document.getElementById('thumbPreview').src = state.imageDataUrl;
   document.getElementById('thumbName').textContent = state.imageMeta.name;
   document.getElementById('thumbMeta').textContent =
     `${state.imageMeta.w} × ${state.imageMeta.h} px${state.imageMeta.sizeKB ? ' • ' + state.imageMeta.sizeKB + ' KB' : ''}`;
-  empty.style.display = 'none';
-  filled.style.display = 'flex';
-  zone.classList.add('has-file');
+  // Hide the empty drop-zone label, show the filled card
+  zone.hidden = true;
+  filled.hidden = false;
 
   // Make sure user is on the upload pane to see the preview, regardless of mode
   // (AI-generated images also show here for clarity)
@@ -580,9 +587,10 @@ function showImagePreview() {
 function clearImage() {
   state.imageEl = null; state.imageDataUrl = null; state.imageMeta = null;
   document.getElementById('fileInput').value = '';
-  document.getElementById('uploadEmpty').style.display = 'block';
-  document.getElementById('uploadFilled').style.display = 'none';
-  document.getElementById('uploadZone').classList.remove('has-file');
+  // Clear the thumb src so a stale image never lingers when the element re-shows
+  document.getElementById('thumbPreview').removeAttribute('src');
+  document.getElementById('uploadZone').hidden = false;
+  document.getElementById('uploadFilled').hidden = true;
   updateGenerateButton();
   updateFitStrategyVisibility();
   hideResults();
