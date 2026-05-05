@@ -31,7 +31,9 @@ const ENDPOINT = (m) => `https://generativelanguage.googleapis.com/v1beta/models
 // fail loudly — they're not capacity issues, they're broken requests.
 const TRANSIENT_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-app.use(express.json({ limit: '20mb' }));   // big enough for base64 images
+// 60mb fits a 4K PNG once base64-encoded (~4/3 size inflation) plus headroom.
+// Client should still downsample large uploads before sending — see public/index.html.
+app.use(express.json({ limit: '60mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', etag: true }));
 
 // ─── Health & config ─────────────────────────────────────────────────────────
@@ -154,7 +156,19 @@ app.post('/api/generate-image', async (req, res) => {
     const { prompt, aspectRatio = '1:1', imageSize = '4K' } = req.body || {};
     if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'prompt required' });
 
-    const augmented = `${prompt.trim()}. Sublimation tumbler wrap design, focal subject centered, clean composition suitable for printing on a stainless steel tumbler.`;
+    // The previous prompt told Gemini "tumbler wrap design ... printing on a stainless steel
+    // tumbler" — which it interpreted as "show me a photo of a printed tumbler." Now we
+    // explicitly negate every form of mockup/product-photo and demand flat 2D artwork.
+    const augmented = `${prompt.trim()}
+
+OUTPUT REQUIREMENTS — read carefully:
+- Produce FLAT 2D GRAPHIC ARTWORK only. Like a sticker, t-shirt graphic, or clipart sheet.
+- DO NOT produce a photograph, product mockup, 3D render, or lifestyle scene.
+- DO NOT show a tumbler, cup, mug, bottle, or any container in the image.
+- DO NOT show hands, people, fabric, props, tables, plants, or background scenery.
+- Background must be plain solid white (#FFFFFF), nothing else.
+- The design fills the frame edge-to-edge, centered, ready to print directly.
+- Think: print-on-demand sublimation transfer, isolated artwork only.`;
 
     const result = await callGeminiWithFallback({ prompt: augmented, aspectRatio, imageSize });
     res.json({ dataUrl: result.dataUrl, modelUsed: result.model });
