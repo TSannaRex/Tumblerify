@@ -723,12 +723,15 @@ async function generateFlat(img, sizeCfg, strategy) {
   const h = inchesToPx(sizeCfg.flat.h);
 
   if (strategy === 'ai-extend') {
-    // Send to server for outpainting at the closest supported aspect ratio,
-    // then cover-fit the result to exact print dimensions
+    // Downsample before upload — Gemini outpaints at its own resolution (4K) regardless
+    // of input size, so shipping a 4096×4096 base64 PNG (~23MB encoded) just wastes
+    // bandwidth and risks hitting the server body limit. 2048px on the long edge gives
+    // Gemini plenty of guidance about content/style without the bloat.
+    const sourceForAi = downsampleDataUrl(state.imageDataUrl, 2048);
     const r = await fetch('/api/extend-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageDataUrl: state.imageDataUrl, aspectRatio: sizeCfg.aiRatio, imageSize: '4K' })
+      body: JSON.stringify({ imageDataUrl: sourceForAi, aspectRatio: sizeCfg.aiRatio, imageSize: '4K' })
     });
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
@@ -744,6 +747,23 @@ async function generateFlat(img, sizeCfg, strategy) {
   }
   // default: cover
   return drawCoverFit(img, w, h);
+}
+
+// Re-encode a data URL down to maxSide on the long edge. Returns original if already smaller.
+function downsampleDataUrl(dataUrl, maxSide) {
+  const img = state.imageEl;
+  if (!img) return dataUrl;
+  const long = Math.max(img.naturalWidth, img.naturalHeight);
+  if (long <= maxSide) return dataUrl;
+  const scale = maxSide / long;
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * scale);
+  c.height = Math.round(img.naturalHeight * scale);
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  // JPEG keeps the payload small; quality 0.92 is visually lossless for guidance purposes
+  return c.toDataURL('image/jpeg', 0.92);
 }
 
 function drawCoverFit(img, w, h) {
